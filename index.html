@@ -713,6 +713,63 @@ textarea { resize: vertical; min-height: 90px; }
   border-radius: 2px; transition: width 0.3s;
   width: 0%;
 }
+
+/* ─── PHOTO BUTTONS ──────────────────────────────────────────────── */
+.photo-btn-row {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 12px; margin-top: 12px;
+}
+.photo-action-btn {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 4px; padding: 20px 12px;
+  border: 2px dashed var(--c-border); border-radius: var(--r-lg);
+  background: var(--c-surface); cursor: pointer; transition: all 0.18s;
+  font-family: var(--font-body); text-align: center; min-height: 90px;
+  width: 100%;
+}
+.photo-action-btn:hover { border-color: var(--c-primary); background: #EBF3FA; }
+.photo-action-btn:active { transform: scale(0.97); }
+.photo-btn-icon  { font-size: 28px; line-height: 1; }
+.photo-btn-label { font-size: 0.9rem; font-weight: 600; color: var(--c-text); }
+.photo-btn-sub   { font-size: 0.75rem; color: var(--c-muted); }
+
+/* ─── MOBILE RESPONSIVE ──────────────────────────────────────────── */
+@media (max-width: 480px) {
+  .topbar { padding: 0 12px; height: 54px; }
+  .topbar-brand { font-size: 1.05rem; }
+  .nav-tab { padding: 6px 8px; font-size: 0.78rem; }
+  .app-content { padding: 12px; }
+  .card { padding: 16px; }
+  .card-title { font-size: 1.05rem; }
+  .code-badge { padding: 16px; flex-direction: column; gap: 10px; }
+  .code-badge-value { font-size: 1.5rem; letter-spacing: 2px; }
+  .stats-grid { gap: 8px; }
+  .stat-card { padding: 12px 8px; }
+  .stat-value { font-size: 1.2rem; }
+  .stat-label { font-size: 0.68rem; }
+  .glucose-grid { grid-template-columns: 1fr; }
+  .photo-btn-icon { font-size: 22px; }
+  .photo-btn-label { font-size: 0.82rem; }
+  .photo-action-btn { padding: 14px 8px; min-height: 76px; }
+  .symptom-chip { padding: 7px 10px; font-size: 0.8rem; }
+  .pain-btn { width: 32px; height: 32px; font-size: 0.8rem; }
+  .foot-diagram-container { width: 150px; height: 250px; }
+  .btn { padding: 12px 16px; font-size: 0.9rem; }
+  .auth-card { padding: 24px 16px; margin: 12px; }
+  .auth-title { font-size: 1.6rem; }
+  .modal-overlay { align-items: flex-end; padding: 0; }
+  .modal { border-radius: var(--r-xl) var(--r-xl) 0 0; }
+  .search-hero { padding: 24px 12px 20px; }
+  .search-hero-title { font-size: 1.5rem; }
+  .search-input-wrap { flex-direction: column; }
+  .image-thumb-wrap { width: 80px; height: 80px; }
+  .patient-result { flex-direction: column; }
+  .log-item { padding: 14px; }
+}
+@media (max-width: 360px) {
+  .pain-btn { width: 28px; height: 28px; font-size: 0.75rem; }
+  .code-badge-value { font-size: 1.3rem; letter-spacing: 1px; }
+}
 </style>
 </head>
 <body>
@@ -854,11 +911,24 @@ textarea { resize: vertical; min-height: 90px; }
       <div class="card" style="margin-bottom:16px">
         <div class="card-title">📷 Wound Photos</div>
         <div class="image-grid" id="image-grid"></div>
+        <div class="photo-btn-row" id="photo-btn-row">
+          <button class="photo-action-btn" onclick="openCamera()">
+            <span class="photo-btn-icon">📸</span>
+            <span class="photo-btn-label">Take Photo</span>
+            <span class="photo-btn-sub">Use camera</span>
+          </button>
+          <button class="photo-action-btn" onclick="openGallery()">
+            <span class="photo-btn-icon">🖼️</span>
+            <span class="photo-btn-label">Choose Photo</span>
+            <span class="photo-btn-sub">From gallery</span>
+          </button>
+        </div>
         <div class="upload-progress" id="upload-progress">
           <div class="upload-progress-bar" id="upload-bar"></div>
         </div>
-        <p class="hint" style="margin-top:8px">Upload up to 3 photos. Images are compressed before upload.</p>
-        <input type="file" id="file-input" accept="image/*" multiple style="display:none" onchange="handleFileSelect(event)">
+        <p class="hint" style="margin-top:8px">Up to 3 photos · compressed automatically · saved to your account</p>
+        <input type="file" id="camera-input"  accept="image/*" capture="environment" style="display:none" onchange="handleFileSelect(event)">
+        <input type="file" id="gallery-input" accept="image/*" multiple style="display:none" onchange="handleFileSelect(event)">
       </div>
 
       <!-- BLOOD SUGAR -->
@@ -1358,21 +1428,29 @@ function handleFootTap(e) {
 }
 
 /* ─── IMAGE HANDLING ──────────────────────────────────────────────── */
+function openCamera() {
+  if (newLogImages.length >= 3) { showToast('Maximum 3 photos allowed', 'error'); return; }
+  document.getElementById('camera-input').click();
+}
+
+function openGallery() {
+  if (newLogImages.length >= 3) { showToast('Maximum 3 photos allowed', 'error'); return; }
+  document.getElementById('gallery-input').click();
+}
+
 function renderImageGrid() {
-  const grid = document.getElementById('image-grid');
-  const thumbs = newLogImages.map((img, i) => `
+  const grid    = document.getElementById('image-grid');
+  const btnRow  = document.getElementById('photo-btn-row');
+
+  // Render thumbnails
+  grid.innerHTML = newLogImages.map((img, i) => `
     <div class="image-thumb-wrap">
       <img src="${img.dataUrl}" alt="Wound photo ${i+1}">
       <button class="image-remove" onclick="removeImage(${i})">✕</button>
     </div>`).join('');
 
-  const addBtn = newLogImages.length < 3 ? `
-    <div class="image-add-btn" onclick="document.getElementById('file-input').click()">
-      <span class="image-add-icon">📷</span>
-      <span>Add photo</span>
-    </div>` : '';
-
-  grid.innerHTML = thumbs + addBtn;
+  // Hide add buttons when at max
+  if (btnRow) btnRow.style.display = newLogImages.length >= 3 ? 'none' : '';
 }
 
 function removeImage(index) {
@@ -1381,7 +1459,7 @@ function removeImage(index) {
 }
 
 function handleFileSelect(event) {
-  const files = Array.from(event.target.files);
+  const files     = Array.from(event.target.files);
   const remaining = 3 - newLogImages.length;
   const toProcess = files.slice(0, remaining);
 
