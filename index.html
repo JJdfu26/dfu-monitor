@@ -1230,8 +1230,45 @@ async function handleSignup() {
 }
 
 async function loadUserAndEnter(userId) {
-  const { data: user } = await db.from('users').select('*').eq('id', userId).single();
-  if (!user) throw new Error('Profile not found');
+  // Try up to 10 times with delay — trigger may need a moment
+  let user = null;
+  for (let i = 0; i < 10; i++) {
+    const { data, error } = await db.from('users').select('*').eq('id', userId).single();
+    if (data) { user = data; break; }
+    await new Promise(r => setTimeout(r, 700));
+  }
+
+  // If still not found, build a minimal profile from Auth session
+  if (!user) {
+    const { data: { user: authUser } } = await db.auth.getUser();
+    if (!authUser) throw new Error('Session expired. Please sign in again.');
+
+    // Try to insert the missing profile row manually
+    const meta  = authUser.user_metadata || {};
+    const vRole = meta.role      || 'patient';
+    const vName = meta.full_name || authUser.email.split('@')[0];
+
+    await db.from('users').upsert({
+      id:         authUser.id,
+      email:      authUser.email,
+      full_name:  vName,
+      role:       vRole,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'id' });
+
+    if (vRole === 'doctor') {
+      await db.from('doctor_profiles').upsert({ user_id: authUser.id }, { onConflict: 'user_id' });
+    } else {
+      await db.from('patient_profiles').upsert({ user_id: authUser.id }, { onConflict: 'user_id' });
+    }
+
+    // Fetch again
+    const { data: retried } = await db.from('users').select('*').eq('id', userId).single();
+    user = retried;
+  }
+
+  if (!user) throw new Error('Could not load profile. Please try signing out and back in.');
   currentUser = user;
   await enterApp();
 }
