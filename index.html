@@ -1674,13 +1674,22 @@ async function handleSearch() {
   document.getElementById('doctor-logs-section').style.display = 'none';
 
   try {
+    // Step 1: fetch patient profile
     const { data: profile, error } = await db.from('patient_profiles')
-      .select('*, user:users(*)')
-      .eq('patient_code', code).single();
+      .select('*')
+      .eq('patient_code', code)
+      .single();
 
-    if (error || !profile) throw new Error(`No patient found with code "${code}"`);
+    if (error || !profile) throw new Error(`No patient found with code "${code}". Please check and try again.`);
 
-    const initials = profile.user.full_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0,2);
+    // Step 2: fetch user details separately (avoids RLS join issues)
+    const { data: userRow } = await db.from('users')
+      .select('full_name, email')
+      .eq('id', profile.user_id)
+      .single();
+
+    const displayName   = userRow?.full_name || 'Patient';
+    const initials      = displayName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
     const diabetesLabel = profile.diabetes_type ? `Type ${profile.diabetes_type.replace('type','')} diabetes` : '';
 
     document.getElementById('patient-result').style.display = '';
@@ -1689,12 +1698,13 @@ async function handleSearch() {
         <div class="patient-result-info">
           <div class="patient-result-avatar">${initials}</div>
           <div>
-            <div class="patient-result-name">${profile.user.full_name}</div>
+            <div class="patient-result-name">${displayName}</div>
             <div class="patient-result-code">${profile.patient_code}</div>
             ${diabetesLabel ? `<div class="patient-result-meta">${diabetesLabel}</div>` : ''}
+            ${userRow?.email ? `<div class="patient-result-meta">${userRow.email}</div>` : ''}
           </div>
         </div>
-        <button class="btn btn-primary btn-sm" onclick="loadDoctorPatientLogs('${profile.id}')">
+        <button class="btn btn-primary btn-sm" onclick="loadDoctorPatientLogs('${profile.id}', '${displayName}')">
           View Records →
         </button>
       </div>`;
@@ -1707,17 +1717,27 @@ async function handleSearch() {
   }
 }
 
-async function loadDoctorPatientLogs(patientId) {
+async function loadDoctorPatientLogs(patientId, patientName) {
   const section = document.getElementById('doctor-logs-section');
   const list    = document.getElementById('doctor-logs-list');
   section.style.display = '';
+
+  // Show patient name above logs
+  const heading = document.querySelector('#doctor-logs-section h3');
+  if (heading && patientName) heading.textContent = patientName + '\'s Health Logs';
+
   list.innerHTML = `<div class="loading-state"><span class="loader loader-dark"></span> Loading records…</div>`;
 
-  const { data: logs } = await db.from('patient_logs')
+  const { data: logs, error } = await db.from('patient_logs')
     .select('*, images:log_images(*), foot_marker:foot_markers(*)')
     .eq('patient_id', patientId)
     .order('log_date', { ascending: false })
     .limit(30);
+
+  if (error) {
+    list.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-title">Could not load logs</div><div class="empty-sub">${error.message}</div></div>`;
+    return;
+  }
 
   if (!logs?.length) {
     list.innerHTML = `<div class="empty-state"><div class="empty-icon">📋</div><div class="empty-title">No logs recorded</div><div class="empty-sub">This patient has not submitted any health logs yet.</div></div>`;
@@ -1726,7 +1746,7 @@ async function loadDoctorPatientLogs(patientId) {
 
   list.innerHTML = logs.map(log => buildLogCard(log)).join('');
 
-  // Override click to open modal (same modal, works for doctor too)
+  // Wire up click to open detail modal
   list.querySelectorAll('.log-item').forEach((el, i) => {
     el.onclick = () => openLogModal(logs[i].id);
   });
